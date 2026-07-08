@@ -1,0 +1,13 @@
+# build output
+bin/
+*.o
+
+# cloned dependencies (fetched by setup.sh)
+vendor/
+
+# recovery checkpoints / scratch
+*.log
+stage_survivors.txt
+s0_ckpt.txt
+s0_found.txt
+resume_ckpt.txt
