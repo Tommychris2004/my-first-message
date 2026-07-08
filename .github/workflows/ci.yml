@@ -1,0 +1,54 @@
+name: build-and-smoke-test
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python deps
+        run: python -m pip install --quiet pynacl base58
+
+      - name: Fetch pinned dependencies (pvac_hfhe_cpp + hfhe-challenge)
+        run: ./setup.sh
+
+      - name: Build
+        # -maes gives hardware AES (required by lpn.hpp); avoid -march=native for a
+        # deterministic build on the shared runner.
+        run: make CXXFLAGS="-std=c++17 -O2 -maes -pthread"
+
+      - name: Smoke - parse artifacts (expect 7 ciphers)
+        run: |
+          ./bin/parse_artifacts vendor/hfhe-challenge | tee parse.out
+          grep -q "count=7" parse.out
+
+      - name: Smoke - R_com oracle PoC (truth accepts, wrong rejects)
+        run: |
+          ./bin/oracle_poc | tee poc.out
+          grep -qE "oracle\(truth\) +=  *1" poc.out
+          grep -qE "oracle\(wrong1\) +=  *0" poc.out
+          grep -qE "oracle\(wrong2\) +=  *0" poc.out
+
+      - name: Smoke - recover synthetic mnemonic (reduced wordlist, full pipeline)
+        run: |
+          head -200 docs/bip39_english.txt > wl200.txt
+          WLFILE=wl200.txt ./bin/recover_mnemonic self 3 79 | tee rec.out
+          grep -q "match=1" rec.out
+
+      - name: Smoke - Octra address derivation reproduces the funded address
+        run: |
+          python scripts/verify_address.py \
+            "convince object outdoor cost pave will coffee student neck typical drama ensure" | tee addr.out
+          grep -qE "MATCH +: True" addr.out
